@@ -1,5 +1,5 @@
 from langchain.chat_models import init_chat_model
-from tools import agent_tools
+from .tools import agent_tools
 from dotenv import load_dotenv
 from typing import TypedDict,Annotated
 from langgraph.graph.message import add_messages
@@ -68,16 +68,16 @@ graph.add_conditional_edges('model_node',route_after_model)
 graph.add_edge("tools_node",'model_node')
 
 #compiling the graph
-agent=graph.compile()
+shades=graph.compile()
 
 #invoking the agent
-result=agent.invoke({'messages':[{'role':"user","content":"What are the functions inside playground/math_utils.py"}]})
+# result=shades.invoke({'messages':[{'role':"user","content":"What are the functions inside playground/math_utils.py"}]})
 
 
 
-print("Entire convo")
-for i,msg in enumerate(result['messages']):
-    print(f"Message no. {i+1}: {msg} \n\n")
+# print("Entire convo")
+# for i,msg in enumerate(result['messages']):
+#     print(f"Message no. {i+1}: {msg} \n\n")
 
-print(f"Length of messages : {len(result['messages'])}")
+# print(f"Length of messages : {len(result['messages'])}")
 
