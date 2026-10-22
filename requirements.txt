@@ -1,3 +1,4 @@
 deepagents
-pytest
 python-dotenv
+ripgrep-bin
+langchain-ollama

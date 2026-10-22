@@ -7,6 +7,7 @@ import os
 root_dir=os.getcwd()
 backend=LocalShellBackend(root_dir=root_dir,inherit_env=True)
 
+MAX_GREP_MATCHES = 200
 
 @tool(parse_docstring=True)
 def read_file(filepath:str,offset:int=0)->str:
@@ -69,6 +70,78 @@ def edit_file(filepath: str, old_string: str, new_string: str, replace_all: bool
 
 
 
+@tool(parse_docstring=True)
+def list_dir(path:str)->str:
+    """List the files and folders directly inside a directory (one level, not recursive).
+
+    To find files deeper in the project, use glob instead.
+
+    Args:
+    path: directory path from the project root, e.g. "/" or "/src".
+    """ 
+    result=backend.ls(path=path)
+
+    if result.error:
+        return f"Error : {result.error}"
+    elif not result.entries:
+        return f"{path} is an empty dir"
+    else:
+        contents="\n".join([obj['path'] for obj in result.entries])
+        return f"files and dirs at {path} : \n{contents}"
 
 
-agent_tools=[read_file,write_file,edit_file]
+@tool(parse_docstring=True)
+def glob(pattern:str,path:str="/")->str:
+    """Find files by name pattern, searching through all subfolders.
+
+    Use this to locate a file when you don't know which folder it's in.
+
+    Args:
+        pattern: glob pattern, e.g. "**/*.py" (all Python files) or "**/math_utils.py".
+        path: folder to search from, relative to the project root. Defaults to "/".
+    """
+
+    result=backend.glob(pattern=pattern,path=path)
+    
+    if result.error:
+        return f"Error : {result.error}"
+    elif not result.matches:
+        return f"No matches found for {pattern} at {path}"
+    
+    contents="\n".join([obj['path'] for obj in result.matches])
+
+    if not result.truncated:
+        return f"Files matching '{pattern}' under {path} : \n{contents}"
+    else:
+        note=f"The output was truncated because {result.truncation_reason} \n Use a more specific pattern or a narrower path.\n"
+        return note+f"Files matching '{pattern}' under {path} : \n{contents}"
+
+
+    
+@tool(parse_docstring=True)
+def grep(pattern:str,path:str='/')->str:
+    """Search inside files for literal text (not a regex).
+
+    Returns matching lines as path : line : text.
+
+    Args:
+        pattern: exact text to find, e.g. "def add" or "import os".
+        path: folder or file to search, relative to the project root. Defaults to "/".
+    """ 
+    result=backend.grep(pattern=pattern,path=path,max_count=MAX_GREP_MATCHES)
+
+    if result.error:
+        return f"Error : {result.error}"
+    elif not result.matches:
+        return f"No matches found for {pattern} at {path}"
+
+    contents="\n".join([f"{m['path']} : {m['line']} : {m['text']}" for m in result.matches])
+    note="The following output is in the format : path : line : matched_pattern\n"
+    noted_content=note+contents
+    if not result.truncated:
+        return noted_content
+    else:
+        truncated_note=f"The following output was stopped at {MAX_GREP_MATCHES} matches; use a more specific pattern or a narrower path\n"
+        return truncated_note+noted_content
+
+agent_tools=[read_file,write_file,edit_file,list_dir,glob,grep]
