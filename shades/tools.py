@@ -7,6 +7,7 @@ import subprocess
 root_dir=os.getcwd()
 backend=LocalShellBackend(root_dir="playground",inherit_env=True)
 
+MAX_GLOB_MATCHES=30
 MAX_GREP_MATCHES = 200
 MAX_OUTPUT=4000
 HEAD=1500
@@ -111,7 +112,14 @@ def glob(pattern:str,path:str=".")->str:
     elif not result.matches:
         return f"No matches found for {pattern} at {path}"
     
-    contents="\n".join([obj['path'].lstrip('/') for obj in result.matches])
+    matches=result.matches
+
+    if len(matches)>MAX_GLOB_MATCHES:
+        matches=matches[:MAX_GLOB_MATCHES]
+        note=f"The result of this glob tool was limited to {MAX_GLOB_MATCHES} matches out of a total of {len(result.matches)}\nUse a more specific pattern or a narrower path.\n"
+        contents=note+"\n".join([obj['path'].lstrip('/') for obj in matches])     
+    else:
+        contents="\n".join([obj['path'].lstrip('/') for obj in matches])
 
     if not result.truncated:
         return f"Files matching '{pattern}' under {path} : \n{contents}"
