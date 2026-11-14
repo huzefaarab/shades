@@ -4,6 +4,8 @@ from pathlib import Path
 import os
 import subprocess
 
+IGNORED_DIRS = {".git", "node_modules", "__pycache__", ".venv"}
+
 root_dir=os.getcwd()
 backend=LocalShellBackend(root_dir="playground",inherit_env=True)
 
@@ -12,6 +14,10 @@ MAX_GREP_MATCHES = 200
 MAX_OUTPUT=4000
 HEAD=1500
 TAIL=2500
+
+
+def is_noise(path: str) -> bool:
+    return any(part in IGNORED_DIRS for part in path.split("/"))
 
 @tool(parse_docstring=True)
 def read_file(filepath:str,offset:int=0)->str:
@@ -112,11 +118,17 @@ def glob(pattern:str,path:str=".")->str:
     elif not result.matches:
         return f"No matches found for {pattern} at {path}"
     
-    matches=result.matches
+    matches = [m for m in result.matches if not is_noise(m["path"])]
+    matches = sorted(matches, key=lambda m: (m["path"].count("/"), m["path"]))
 
-    if len(matches)>MAX_GLOB_MATCHES:
+    if not matches:
+        ignored_dirs=", ".join(sorted(IGNORED_DIRS))
+        return f"No matches found for {pattern} at {path} (matches inside ignored folders were skipped). Ignored dirs: {ignored_dirs}"
+
+    total=len(matches)
+    if total>MAX_GLOB_MATCHES:
         matches=matches[:MAX_GLOB_MATCHES]
-        note=f"The result of this glob tool was limited to {MAX_GLOB_MATCHES} matches out of a total of {len(result.matches)}\nUse a more specific pattern or a narrower path.\n"
+        note=f"The result of this glob tool was limited to {MAX_GLOB_MATCHES} matches out of a total of {total}\nUse a more specific pattern or a narrower path.\n"
         contents=note+"\n".join([obj['path'].lstrip('/') for obj in matches])     
     else:
         contents="\n".join([obj['path'].lstrip('/') for obj in matches])
