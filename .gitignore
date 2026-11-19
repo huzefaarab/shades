@@ -1,9 +1,9 @@
 .env
-__pycache__
-.pytest_cache
-/test
+**/__pycache__
+*.pytest_cache
 test.py
 .DS_Store
-spike.py
 .venv/
 requirements-dev.txt
+tester.py
+*.egg-info/

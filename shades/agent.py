@@ -6,7 +6,7 @@ from langgraph.graph.message import add_messages
 from langgraph.graph import START,END,StateGraph
 from langchain.messages import ToolMessage,HumanMessage
 from pydantic_core import ValidationError
-
+from langgraph.checkpoint.memory import InMemorySaver
 load_dotenv()
 
 #creating the State on which the graph will be binded
@@ -16,6 +16,8 @@ class State(TypedDict):
 
 #initializin the model with tools
 model=init_chat_model("ollama:qwen3.5:9b",num_ctx=16384)
+model = init_chat_model(model="nvidia/nemotron-3-ultra-550b-a55b:free",model_provider="openrouter")
+# model = init_chat_model(model="nvidia/doesnotexists",model_provider="openrouter") #fake model nam
 model_with_tools=model.bind_tools(agent_tools)
 
 #creating the model node
@@ -111,7 +113,7 @@ graph.add_edge("tools_node",'model_node')
 graph.add_edge("nudge_node",'model_node')
 
 #compiling the graph
-shades=graph.compile()
+shades=graph.compile(checkpointer=InMemorySaver())
 
 
 

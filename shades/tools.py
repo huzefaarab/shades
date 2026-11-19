@@ -7,10 +7,12 @@ import subprocess
 IGNORED_DIRS = {".git", "node_modules", "__pycache__", ".venv"}
 
 root_dir=os.getcwd()
-backend=LocalShellBackend(root_dir="playground",inherit_env=True)
+backend=LocalShellBackend(root_dir=os.getcwd(),inherit_env=True)
 
 MAX_GLOB_MATCHES=30
 MAX_GREP_MATCHES = 200
+
+#for shell
 MAX_OUTPUT=4000
 HEAD=1500
 TAIL=2500
@@ -198,7 +200,7 @@ def run_command(command:str,timeout:int=120)->str:
 
     Args:
         command: the shell command to run, e.g. "pytest" or "pip uninstall -y requests".
-        timeout: seconds to wait before stopping the command. Raise it only for slow commands like large installs or test suites.
+        timeout: seconds to wait before stopping the command. Raise it only for slow commands like large installs or test suites Defaults to 120.
     """
     bad_commands=["cd ..",'cd','cd ~','cd -']
     if command in bad_commands:

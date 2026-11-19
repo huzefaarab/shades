@@ -1,4 +1,3 @@
 deepagents
 python-dotenv
 ripgrep-bin
-langchain-ollama

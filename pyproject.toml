@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shades"
+version = "0.1.0"
+dependencies = [
+    "deepagents",
+    "python-dotenv",
+    "ripgrep-bin",
+    "langchain-ollama",
+    "langchain-openrouter",
+]
+requires-python = ">=3.11,<3.15"
+
+[project.scripts]
+shades = "shades.cli:main"
+
+[tool.setuptools]
+packages = ["shades"]
