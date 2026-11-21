@@ -2,12 +2,14 @@ from langchain.tools import tool
 from deepagents.backends import LocalShellBackend
 from pathlib import Path
 import os
-import subprocess
-
-IGNORED_DIRS = {".git", "node_modules", "__pycache__", ".venv"}
+from fnmatch import fnmatch
 
 root_dir=os.getcwd()
 backend=LocalShellBackend(root_dir=os.getcwd(),inherit_env=True)
+
+IGNORED_DIRS = {".git", "node_modules", "__pycache__", ".venv"}
+SECRET_PATTERNS = (".env", ".env.*", "*.env", "*.pem", "*.key", "id_rsa*", ".ssh", ".aws",".kube",".azure","id_ed25519*")
+DUMMY_SECRETS=(".env.example",".env.sample",".env.template")
 
 MAX_GLOB_MATCHES=30
 MAX_GREP_MATCHES = 200
@@ -17,9 +19,20 @@ MAX_OUTPUT=4000
 HEAD=1500
 TAIL=2500
 
+def is_secret(filepath:str) ->bool:
+    p=Path(filepath)
+    folders=p.parts[:-1]
+    name=p.name.lower()
+    if any(fnmatch(f.lower(),pat) for f in folders for pat in SECRET_PATTERNS):
+        return True
+    
+    if name in DUMMY_SECRETS:
+        return False
+    return any(fnmatch(name, pat) for pat in SECRET_PATTERNS)
 
-def is_noise(path: str) -> bool:
-    return any(part in IGNORED_DIRS for part in path.split("/"))
+def is_noise(filepath: str) -> bool:
+    parts=Path(filepath).parts
+    return any(part in IGNORED_DIRS for part in parts)
 
 @tool(parse_docstring=True)
 def read_file(filepath:str,offset:int=0)->str:
@@ -31,8 +44,10 @@ def read_file(filepath:str,offset:int=0)->str:
             says the file continues.
     """
     
+    if is_secret(filepath=filepath):
+        return f"Refused: {filepath} is a secrets file and can't be read. Continue without it."
     result=backend.read(file_path=filepath,offset=offset)   
-
+    
     if result.error:
         return f"Error : {result.error}"
     elif result.next_offset is not None:
@@ -51,6 +66,10 @@ def write_file(filepath:str,content:str)->str:
         filepath: path from the project root, e.g. "src/main.py".
         content:content to be written inside the file.
     """
+
+    if is_secret(filepath=filepath):
+        return f"Refused: {filepath} is a secrets file and can't be written. Continue without it."
+
     result=backend.write(file_path=filepath,content=content)
 
     if result.error:
@@ -73,6 +92,10 @@ def edit_file(filepath: str, old_string: str, new_string: str, replace_all: bool
         new_string: replacement text.
         replace_all: replace every occurrence; use only if all should change.
     """
+
+    if is_secret(filepath=filepath):
+        return f"Refused: {filepath} is a secrets file and can't be edited. Continue without it."   
+     
     result=backend.edit(file_path=filepath,old_string =old_string,new_string=new_string,replace_all=replace_all)
 
     if result.error:
@@ -120,12 +143,12 @@ def glob(pattern:str,path:str=".")->str:
     elif not result.matches:
         return f"No matches found for {pattern} at {path}"
     
-    matches = [m for m in result.matches if not is_noise(m["path"])]
+    matches = [m for m in result.matches if not is_noise(m["path"]) and not is_secret(m["path"])]
     matches = sorted(matches, key=lambda m: (m["path"].count("/"), m["path"]))
 
     if not matches:
         ignored_dirs=", ".join(sorted(IGNORED_DIRS))
-        return f"No matches found for {pattern} at {path} (matches inside ignored folders were skipped). Ignored dirs: {ignored_dirs}"
+        return f"No matches found for {pattern} at {path} (matches inside ignored folders or secret files were skipped). Ignored dirs: {ignored_dirs}"
 
     total=len(matches)
     if total>MAX_GLOB_MATCHES:
@@ -153,16 +176,33 @@ def grep(pattern:str,path:str='.')->str:
         pattern: exact text to find, e.g. "def add" or "import os".
         path: folder or file to search, relative to the project root.e.g. "src/main.py". Defaults to ".".
     """ 
-    result=backend.grep(pattern=pattern,path=path,max_count=MAX_GREP_MATCHES)
 
+    result=backend.grep(pattern=pattern,path=path,max_count=MAX_GREP_MATCHES)
+    
     if result.error:
         return f"Error : {result.error}"
     elif not result.matches:
         return f"No matches found for {pattern} at {path}"
 
-    contents="\n".join([f"{m['path'].lstrip('/')} : {m['line']} : {m['text']}" for m in result.matches])
+    #trimming out noise:
+    not_noise=list(m for m in result.matches if not is_noise(m['path']))
+
+    #trimming out secrets:
+    no_secrets=list(m for m in not_noise if not is_secret(m['path']))
+    
+    if not no_secrets:
+        ignored_dirs=", ".join(sorted(IGNORED_DIRS))
+        return f"No matches found for {pattern} at {path} (matches inside ignored folders or secret files were skipped). Ignored dirs: {ignored_dirs}"
+
+    secret_note=""
+    if len(not_noise)!=len(no_secrets):
+        secret_note=f"{len(not_noise) - len(no_secrets)} matches out of {len(not_noise)} were secrets and are trimmed\n"
+    #formatting the result
+    contents="\n".join([f"{m['path'].lstrip('/')} : {m['line']} : {m['text']}" for m in no_secrets])
     note="The following output is in the format : path : line : matched_pattern\n"
-    noted_content=note+contents
+    noted_content=secret_note+note+contents
+
+
     if not result.truncated:
         return noted_content
     else:
@@ -174,13 +214,14 @@ def grep(pattern:str,path:str='.')->str:
 def delete_file(filepath:str)->str:
     """Delete a file, or a folder together with everything inside it.
 
-    This cannot be undone. Only use it when the task clearly requires deleting.
-    Every call needs the user's approval; if denied, do not retry.
+    This cannot be undone. Only use it when the task clearly requires deleting
 
     Args:
         filepath: path from the project root, e.g. "src/old.py" or "build".
     """
-
+    if is_secret(filepath=filepath):
+        return f"Refused: {filepath} is a secrets file and can't be deleted. Continue without it."
+          
     result=backend.delete(file_path=filepath)
 
     if result.error:
@@ -190,13 +231,12 @@ def delete_file(filepath:str)->str:
     
 
 @tool(parse_docstring=True)
-def run_command(command:str,timeout:int=120)->str:
+def shell(command:str,timeout:int=120)->str:
     """Run a shell command in the project root and return its exit code and output.
 
     Use non-interactive flags (e.g. -y, --yes); commands cannot answer prompts.
     For files, use read_file, list_dir, glob and grep instead of cat, ls or find.
     Long-running commands such as dev servers are not supported yet and will time out.
-    Every call needs the user's approval; if denied, do not retry the same command.
 
     Args:
         command: the shell command to run, e.g. "pytest" or "pip uninstall -y requests".
@@ -230,4 +270,4 @@ def run_command(command:str,timeout:int=120)->str:
         
 
 
-agent_tools=[read_file,write_file,edit_file,list_dir,glob,grep,delete_file,run_command]
+agent_tools=[read_file,write_file,edit_file,list_dir,glob,grep,delete_file,shell]
